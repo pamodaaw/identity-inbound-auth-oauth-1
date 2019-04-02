@@ -809,7 +809,7 @@
         <maven.buildnumber.plugin.version>1.4</maven.buildnumber.plugin.version>
 
         <!--Swagger Dependency Version-->
-        <jackson.version>1.8.6</jackson.version>
+        <jackson.version>1.9.11</jackson.version>
         <com.fasterxml.jackson.version>2.9.6</com.fasterxml.jackson.version>
         <spring-web.version>4.1.6.RELEASE</spring-web.version>
         <swagger-jaxrs.version>1.5.20</swagger-jaxrs.version>
