@@ -135,6 +135,7 @@ public class OAuthServerConfiguration {
     private String retainOldAccessTokens;
     private String tokenCleanupFeatureEnable;
     private OauthTokenIssuer oauthIdentityTokenGenerator;
+    private boolean scopeValidationConfigValue = true;
     private boolean cacheEnabled = false;
     private boolean isTokenRenewalPerRequestEnabled = false;
     private boolean isRefreshTokenRenewalEnabled = true;
@@ -163,6 +164,7 @@ public class OAuthServerConfiguration {
     private Map<String, Properties> supportedClientAuthHandlerData = new HashMap<>();
     private String saml2TokenCallbackHandlerName = null;
     private String saml2BearerTokenUserType;
+    private boolean saml2UserIdFromClaims = false;
     private boolean mapFederatedUsersToLocal = false;
     private SAML2TokenCallbackHandler saml2TokenCallbackHandler = null;
     private Map<String, String> tokenValidatorClassNames = new HashMap();
@@ -288,6 +290,14 @@ public class OAuthServerConfiguration {
         //Get the configured scope validators
         OMElement scopeValidatorsElem = oauthElem.getFirstChildWithName(
                 getQNameWithIdentityNS(ConfigElements.SCOPE_VALIDATORS));
+
+        //Get scopeValidationEnabledConfigValue
+        OMElement scopeValidationElem = oauthElem.getFirstChildWithName(
+                getQNameWithIdentityNS(ConfigElements.SCOPE_VALIDATION_FOR_AUTHZ_CODE_AND_IMPLICIT));
+
+        if (scopeValidationElem != null) {
+            scopeValidationConfigValue = Boolean.parseBoolean(scopeValidationElem.getText());
+        }
 
         if (scopeValidatorElem != null) {
             parseScopeValidator(scopeValidatorElem);
@@ -1246,6 +1256,11 @@ public class OAuthServerConfiguration {
 
     public String getSaml2BearerTokenUserType() {
         return saml2BearerTokenUserType;
+    }
+
+    public boolean getSaml2UserIdFromClaims() {
+
+        return saml2UserIdFromClaims;
     }
 
     public boolean isConvertOriginalClaimsFromAssertionsToOIDCDialect() {
@@ -2232,16 +2247,22 @@ public class OAuthServerConfiguration {
                 oauthConfigElem.getFirstChildWithName(getQNameWithIdentityNS(ConfigElements.SAML2_GRANT));
         OMElement saml2BearerUserTypeElement = null;
         OMElement saml2TokenHandlerElement = null;
+        OMElement saml2UserIdFromClaimElement = null;
         if (saml2GrantElement != null) {
             saml2BearerUserTypeElement = saml2GrantElement.getFirstChildWithName(getQNameWithIdentityNS
                     (ConfigElements.SAML2_BEARER_USER_TYPE));
             saml2TokenHandlerElement = saml2GrantElement.getFirstChildWithName(getQNameWithIdentityNS(ConfigElements.SAML2_TOKEN_HANDLER));
+            saml2UserIdFromClaimElement = saml2GrantElement.getFirstChildWithName(getQNameWithIdentityNS(ConfigElements.
+                    SAML2_USER_ID_FROM_CLAIMS));
         }
         if (saml2TokenHandlerElement != null && StringUtils.isNotBlank(saml2TokenHandlerElement.getText())) {
             saml2TokenCallbackHandlerName = saml2TokenHandlerElement.getText().trim();
         }
         if (saml2BearerUserTypeElement != null && StringUtils.isNotBlank(saml2BearerUserTypeElement.getText())) {
             saml2BearerTokenUserType = saml2BearerUserTypeElement.getText().trim();
+        }
+        if (saml2UserIdFromClaimElement != null && StringUtils.isNotBlank(saml2UserIdFromClaimElement.getText())) {
+            saml2UserIdFromClaims = Boolean.parseBoolean(saml2UserIdFromClaimElement.getText().trim());
         }
     }
 
@@ -2695,6 +2716,15 @@ public class OAuthServerConfiguration {
     }
 
     /**
+     * This method returns the value of the property ScopeValidationEnabledForAuthzCodeAndImplicitGrant  for the OAuth
+     * configuration
+     * in identity.xml.
+     */
+    public boolean isScopeValidationEnabledForCodeAndImplicitGrant() {
+        return scopeValidationConfigValue;
+    }
+
+    /**
      * Localpart names for the OAuth configuration in identity.xml.
      */
     private class ConfigElements {
@@ -2789,6 +2819,9 @@ public class OAuthServerConfiguration {
         private static final String SKIP_SCOPE_ATTR = "scopesToSkip";
         private static final String IMPLICIT_ERROR_FRAGMENT = "ImplicitErrorFragment";
 
+        // Enable/Disable scope validation for implicit grant and authorization code grant
+        private static final String SCOPE_VALIDATION_FOR_AUTHZ_CODE_AND_IMPLICIT = "ScopeValidationEnabledForAuthzCodeAndImplicitGrant";
+
         // Default timestamp skew
         private static final String TIMESTAMP_SKEW = "TimestampSkew";
         // Default validity periods
@@ -2853,6 +2886,7 @@ public class OAuthServerConfiguration {
         private static final String SAML2_GRANT = "SAML2Grant";
         private static final String SAML2_TOKEN_HANDLER = "SAML2TokenHandler";
         private static final String SAML2_BEARER_USER_TYPE = "UserType";
+        private static final String SAML2_USER_ID_FROM_CLAIMS = "UseUserIdFromClaims";
 
         // To enable revoke response headers
         private static final String ENABLE_REVOKE_RESPONSE_HEADERS = "EnableRevokeResponseHeaders";

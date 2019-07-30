@@ -21,22 +21,14 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.wso2.carbon.identity.application.authentication.framework.exception.FrameworkException;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
-import org.wso2.carbon.identity.application.common.model.FederatedAuthenticatorConfig;
-import org.wso2.carbon.identity.application.common.model.IdentityProvider;
+import org.wso2.carbon.identity.application.authentication.framework.util.FrameworkUtils;
 import org.wso2.carbon.identity.application.common.model.RoleMapping;
 import org.wso2.carbon.identity.application.common.model.ServiceProvider;
-import org.wso2.carbon.identity.application.common.util.IdentityApplicationConstants;
-import org.wso2.carbon.identity.application.common.util.IdentityApplicationManagementUtil;
-import org.wso2.carbon.identity.base.IdentityConstants;
-import org.wso2.carbon.identity.core.util.IdentityUtil;
 import org.wso2.carbon.identity.oauth.cache.AuthorizationGrantCache;
 import org.wso2.carbon.identity.oauth.cache.AuthorizationGrantCacheEntry;
 import org.wso2.carbon.identity.oauth.cache.AuthorizationGrantCacheKey;
 import org.wso2.carbon.identity.oauth.config.OAuthServerConfiguration;
-import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.openidconnect.internal.OpenIDConnectServiceComponentHolder;
-import org.wso2.carbon.idp.mgt.IdentityProviderManagementException;
-import org.wso2.carbon.idp.mgt.IdentityProviderManager;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -106,6 +98,15 @@ public class OIDCClaimUtil {
         return roleMapping.getLocalRole().getLocalRoleName();
     }
 
+    /**
+     * Filter user claims based on consent with the highest priority {@link OpenIDConnectClaimFilter}. Consent based
+     * user claims filtering can be configured at the global level.
+     *
+     * @deprecated This method only supports global level consent based user claims filtering configurations. Please
+     * use {@link #filterUserClaimsBasedOnConsent(Map, AuthenticatedUser, String, String, String, ServiceProvider)}
+     * which supports SP level configurations as well.
+     */
+    @Deprecated
     public static Map<String, Object> filterUserClaimsBasedOnConsent(Map<String, Object> userClaims,
                                                                      AuthenticatedUser authenticatedUser,
                                                                      String clientId,
@@ -113,6 +114,32 @@ public class OIDCClaimUtil {
                                                                      String grantType) {
 
         if (isConsentBasedClaimFilteringApplicable(grantType)) {
+            return OpenIDConnectServiceComponentHolder.getInstance()
+                    .getHighestPriorityOpenIDConnectClaimFilter()
+                    .getClaimsFilteredByUserConsent(userClaims, authenticatedUser, clientId, spTenantDomain);
+        } else {
+            if (log.isDebugEnabled()) {
+                String msg = "Filtering user claims based on consent skipped for grant type:%s. Returning original " +
+                        "user claims for user: %s, for clientId: %s of tenantDomain: %s";
+                log.debug(String.format(msg, grantType, authenticatedUser.toFullQualifiedUsername(),
+                        clientId, spTenantDomain));
+            }
+            return userClaims;
+        }
+    }
+
+    /**
+     * Filter user claims based on consent with the highest priority {@link OpenIDConnectClaimFilter}. Consent based
+     * user claims filtering can be configured at the global level, as well as the service provider level.
+     */
+    public static Map<String, Object> filterUserClaimsBasedOnConsent(Map<String, Object> userClaims,
+                                                                     AuthenticatedUser authenticatedUser,
+                                                                     String clientId,
+                                                                     String spTenantDomain,
+                                                                     String grantType,
+                                                                     ServiceProvider serviceProvider) {
+
+        if (isConsentBasedClaimFilteringApplicable(grantType) && !FrameworkUtils.isConsentPageSkippedForSP(serviceProvider)) {
             return OpenIDConnectServiceComponentHolder.getInstance()
                     .getHighestPriorityOpenIDConnectClaimFilter()
                     .getClaimsFilteredByUserConsent(userClaims, authenticatedUser, clientId, spTenantDomain);

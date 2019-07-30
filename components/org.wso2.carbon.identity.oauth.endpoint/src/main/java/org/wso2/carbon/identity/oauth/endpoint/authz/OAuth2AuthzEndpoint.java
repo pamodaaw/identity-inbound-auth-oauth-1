@@ -199,6 +199,16 @@ public class OAuth2AuthzEndpoint {
 
     private String sessionId;
 
+    private OpenIDConnectClaimFilterImpl openIDConnectClaimFilter;
+
+    public OpenIDConnectClaimFilterImpl getOpenIDConnectClaimFilter(){
+        return openIDConnectClaimFilter;
+    }
+
+    public void setOpenIDConnectClaimFilter(OpenIDConnectClaimFilterImpl openIDConnectClaimFilter) {
+        this.openIDConnectClaimFilter = openIDConnectClaimFilter;
+    }
+
     @GET
     @Path("/")
     @Consumes("application/x-www-form-urlencoded")
@@ -982,8 +992,9 @@ public class OAuth2AuthzEndpoint {
         AuthenticatedUser loggedInUser = getLoggedInUser(oAuthMessage);
         String clientId = oauth2Params.getClientId();
 
-        boolean skipConsent = isOpenIDConnectConsentSkipped();
-        if (!skipConsent) {
+        ServiceProvider serviceProvider = getServiceProvider(oauth2Params.getClientId());
+
+        if (!isConsentSkipped(serviceProvider)) {
             boolean approvedAlways = OAuthConstants.Consent.APPROVE_ALWAYS.equals(consent);
             if (approvedAlways) {
                 OpenIDConnectUserRPStore.getInstance().putUserRPToStore(loggedInUser, applicationName,
@@ -1519,7 +1530,8 @@ public class OAuth2AuthzEndpoint {
             return OAuth2Util.getTenantDomainOfOauthApp(clientId);
         } catch (InvalidOAuthClientException | IdentityOAuth2Exception e) {
             throw new InvalidRequestException("Error retrieving Service Provider tenantDomain for client_id: "
-                    + clientId);
+                    + clientId, OAuth2ErrorCodes.INVALID_REQUEST, OAuth2ErrorCodes.OAuth2SubErrorCodes
+                    .UNEXPECTED_SERVER_ERROR);
         }
     }
 
@@ -1532,7 +1544,8 @@ public class OAuth2AuthzEndpoint {
                 params.setMaxAge(Long.parseLong(maxAgeParam));
             } catch (NumberFormatException ex) {
                 log.error("Invalid max_age parameter: '" + maxAgeParam + "' sent in the authorization request.");
-                throw new InvalidRequestException("Invalid max_age parameter value sent in the authorization request.");
+                throw new InvalidRequestException("Invalid max_age parameter value sent in the authorization request" +
+                        ".", OAuth2ErrorCodes.INVALID_REQUEST, OAuth2ErrorCodes.OAuth2SubErrorCodes.INVALID_PARAMETERS);
             }
         }
     }
@@ -1764,7 +1777,9 @@ public class OAuth2AuthzEndpoint {
                                  AuthenticatedUser authenticatedUser, boolean hasUserApproved)
             throws OAuthSystemException, ConsentHandlingFailedException {
 
-        if (isOpenIDConnectConsentSkipped()) {
+        ServiceProvider serviceProvider = getServiceProvider(oauth2Params.getClientId());
+
+        if (isConsentSkipped(serviceProvider)) {
             sessionState.setAddSessionState(true);
             return handleUserConsent(oAuthMessage, APPROVE, sessionState);
         } else if (hasUserApproved) {
@@ -1834,9 +1849,16 @@ public class OAuth2AuthzEndpoint {
         }
     }
 
-    private boolean isOpenIDConnectConsentSkipped() {
+    /**
+     * Consent page can be skipped by setting OpenIDConnect configuration or by setting SP property.
+     *
+     * @param serviceProvider Service provider related to this request.
+     * @return A boolean stating whether consent page is skipped or not.
+     */
+    private boolean isConsentSkipped(ServiceProvider serviceProvider) {
 
-        return getOAuthServerConfiguration().getOpenIDConnectSkipeUserConsentConfig();
+        return getOAuthServerConfiguration().getOpenIDConnectSkipeUserConsentConfig()
+                || FrameworkUtils.isConsentPageSkippedForSP(serviceProvider);
     }
 
     private boolean isConsentFromUserRequired(String preConsentQueryParams) {
@@ -1896,10 +1918,6 @@ public class OAuth2AuthzEndpoint {
                 List<ClaimMetaData> requestedOidcClaimsList = new ArrayList<>();
                 List<String> localClaimsOfOidcClaims = new ArrayList<>();
                 List<String> localClaimsOfEssentialClaims = new ArrayList<>();
-
-                OpenIDConnectClaimFilterImpl openIDConnectClaimFilter = (OpenIDConnectClaimFilterImpl)
-                        PrivilegedCarbonContext.getThreadLocalCarbonContext().
-                                getOSGiService(OpenIDConnectClaimFilter.class, null);
 
                 // Get the claims uri list of all the requested scopes. Eg:- country, email
                 List<String> claimListOfScopes = openIDConnectClaimFilter.getClaimsFilteredByOIDCScopes(oauth2Params.
@@ -2068,8 +2086,9 @@ public class OAuth2AuthzEndpoint {
                                                    OAuth2Parameters oauth2Params, boolean hasUserApproved)
             throws OAuthSystemException, ConsentHandlingFailedException, OAuthProblemException {
 
+        ServiceProvider serviceProvider = getServiceProvider(oauth2Params.getClientId());
         sessionState.setAddSessionState(true);
-        if (isOpenIDConnectConsentSkipped()) {
+        if (isConsentSkipped(serviceProvider)) {
             return handleUserConsent(oAuthMessage, APPROVE, sessionState);
         } else if (hasUserApproved) {
             return handleApprovedAlwaysWithoutPromptingForNewConsent(oAuthMessage, sessionState, oauth2Params);
