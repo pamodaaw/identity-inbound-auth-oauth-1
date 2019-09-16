@@ -166,6 +166,11 @@ public class OAuth2Util {
     public static final String OPENID_CONNECT = "OpenIDConnect";
     public static final String ENABLE_OPENID_CONNECT_AUDIENCES = "EnableAudiences";
     public static final String OPENID_CONNECT_AUDIENCE = "audience";
+    /*
+     * Maintain a separate parameter "OPENID_CONNECT_AUDIENCE_IDENTITY_CONFIG" to get the audience from the identity.xml
+     * when user didn't add any audience in the UI while creating service provider.
+     */
+    public static final String OPENID_CONNECT_AUDIENCE_IDENTITY_CONFIG = "Audience";
     private static final String OPENID_CONNECT_AUDIENCES = "Audiences";
     private static final String DOT_SEPARATER = ".";
     private static final String IDP_ENTITY_ID = "IdPEntityId";
@@ -249,7 +254,7 @@ public class OAuth2Util {
      */
     public static final String APPLICATION_ACCESS_TOKEN_EXP_TIME_IN_MILLISECONDS = "applicationAccessTokenExpireTime";
 
-    private static Log log = LogFactory.getLog(OAuth2Util.class);
+    private static final Log log = LogFactory.getLog(OAuth2Util.class);
     private static long timestampSkew = OAuthServerConfiguration.getInstance().getTimeStampSkewInSeconds() * 1000;
     private static ThreadLocal<Integer> clientTenantId = new ThreadLocal<>();
     private static ThreadLocal<OAuthTokenReqMessageContext> tokenRequestContext = new ThreadLocal<>();
@@ -1373,7 +1378,7 @@ public class OAuth2Util {
         String processedToken = getPersistenceProcessor().getProcessedAccessTokenIdentifier(accessTokenIdentifier);
 
         // check the cache, if caching is enabled.
-        OAuthCacheKey cacheKey = new OAuthCacheKey(processedToken);
+        OAuthCacheKey cacheKey = new OAuthCacheKey(accessTokenIdentifier);
         CacheEntry result = OAuthCache.getInstance().getValueFromCache(cacheKey);
         // cache hit, do the type check.
         if (result != null && result instanceof AccessTokenDO) {
@@ -1392,9 +1397,9 @@ public class OAuth2Util {
             throw new IllegalArgumentException("Invalid Access Token. Access token is not ACTIVE.");
         }
 
-        // add the token back to the cache in the case of a cache miss
-        if (!cacheHit) {
-            cacheKey = new OAuthCacheKey(processedToken);
+        // Add the token back to the cache in the case of a cache miss but don't add to cache when OAuth2 token
+        // hashing feature enabled inorder to reduce the complexity.
+        if (!cacheHit & OAuth2Util.isHashDisabled()) {
             OAuthCache.getInstance().addToCache(cacheKey, accessTokenDO);
             if (log.isDebugEnabled()) {
                 log.debug("Access Token Info object was added back to the cache.");
@@ -1587,7 +1592,7 @@ public class OAuth2Util {
         }
 
         Iterator iterator = audienceConfig.getChildrenWithName(new QName(IdentityCoreConstants.
-                IDENTITY_DEFAULT_NAMESPACE, OPENID_CONNECT_AUDIENCE));
+                IDENTITY_DEFAULT_NAMESPACE, OPENID_CONNECT_AUDIENCE_IDENTITY_CONFIG));
         while (iterator.hasNext()) {
             OMElement supportedAudience = (OMElement) iterator.next();
             String supportedAudienceName;

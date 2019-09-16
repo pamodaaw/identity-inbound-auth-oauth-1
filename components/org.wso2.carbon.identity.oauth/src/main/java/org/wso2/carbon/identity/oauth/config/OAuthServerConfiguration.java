@@ -106,7 +106,7 @@ public class OAuthServerConfiguration {
     private static final String JWT_TOKEN_ISSUER_CLASS =
             "org.wso2.carbon.identity.oauth2.token.JWTTokenIssuer";
     private static final String REQUEST_PARAM_VALUE_BUILDER = "request_param_value_builder";
-    private static Log log = LogFactory.getLog(OAuthServerConfiguration.class);
+    private static final Log log = LogFactory.getLog(OAuthServerConfiguration.class);
     private static OAuthServerConfiguration instance;
     private static String oauth1RequestTokenUrl = null;
     private static String oauth1AuthorizeUrl = null;
@@ -223,7 +223,7 @@ public class OAuthServerConfiguration {
     private Set<OAuth2ScopeValidator> oAuth2ScopeValidators = new HashSet<>();
     private Set<OAuth2ScopeHandler> oAuth2ScopeHandlers = new HashSet<>();
     // property added to fix IDENTITY-4492 in backward compatible manner
-    private boolean isJWTSignedWithSPKey = false;
+    private boolean isJWTSignedWithSPKey = true;
     // property added to fix IDENTITY-4534 in backward compatible manner
     private boolean isImplicitErrorFragment = true;
     // property added to fix IDENTITY-4112 in backward compatible manner
