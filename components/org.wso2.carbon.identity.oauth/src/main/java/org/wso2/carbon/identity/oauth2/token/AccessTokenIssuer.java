@@ -65,6 +65,7 @@ import java.util.concurrent.TimeUnit;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.GrantTypes.REFRESH_TOKEN;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.OauthAppStates.APP_STATE_ACTIVE;
 import static org.wso2.carbon.identity.oauth2.Oauth2ScopeConstants.SYSTEM_SCOPE;
+import static org.wso2.carbon.identity.oauth2.util.OAuth2Util.validateRequestTenantDomain;
 
 /**
  * This class is used to issue access tokens and refresh tokens.
@@ -194,9 +195,12 @@ public class AccessTokenIssuer {
         OAuthAppDO oAuthAppDO = getOAuthApplication(tokenReqDTO.getClientId());
 
         // set the tenantDomain of the SP in the tokenReqDTO
-        // indirectly we can say that the tenantDomain of the SP is the tenantDomain of the user who created SP
-        // this is done to avoid having to send the tenantDomain as a query param to the token endpoint
-        tokenReqDTO.setTenantDomain(OAuth2Util.getTenantDomainOfOauthApp(oAuthAppDO));
+        // Indirectly we can say that the tenantDomain of the SP is the tenantDomain of the user who created SP.
+        // This is done to avoid having to send the tenantDomain as a query param to the token endpoint
+        String tenantDomainOfApp = OAuth2Util.getTenantDomainOfOauthApp(oAuthAppDO);
+        validateRequestTenantDomain(tenantDomainOfApp);
+
+        tokenReqDTO.setTenantDomain(tenantDomainOfApp);
 
         tokReqMsgCtx.addProperty(OAUTH_APP_DO, oAuthAppDO);
 
@@ -240,7 +244,7 @@ public class AccessTokenIssuer {
         }
 
         if (tokReqMsgCtx.getAuthorizedUser() != null && tokReqMsgCtx.getAuthorizedUser().isFederatedUser()) {
-            tokReqMsgCtx.getAuthorizedUser().setTenantDomain(OAuth2Util.getTenantDomainOfOauthApp(oAuthAppDO));
+            tokReqMsgCtx.getAuthorizedUser().setTenantDomain(tenantDomainOfApp);
         }
 
         if (!isValidGrant) {

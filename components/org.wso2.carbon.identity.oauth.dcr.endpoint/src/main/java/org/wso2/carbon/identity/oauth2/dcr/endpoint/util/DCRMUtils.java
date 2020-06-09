@@ -133,6 +133,11 @@ public class DCRMUtils {
                 isServerException);
     }
 
+    /**
+     * Convert the Application object to the ApplicationDTO object.
+     * @param application Instance of an @see Application class.
+     * @return Instance of @see ApplicationDTO
+     */
     public static ApplicationDTO getApplicationDTOFromApplication(Application application) {
 
         if (application == null) {
@@ -144,6 +149,7 @@ public class DCRMUtils {
         applicationDTO.setClientName(application.getClientName());
         applicationDTO.setClientSecret(application.getClientSecret());
         applicationDTO.setRedirectUris(application.getRedirectUris());
+        applicationDTO.setGrantTypes(application.getGrantTypes());
 
         return applicationDTO;
     }

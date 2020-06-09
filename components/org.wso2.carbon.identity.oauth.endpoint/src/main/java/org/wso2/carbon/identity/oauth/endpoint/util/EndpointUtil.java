@@ -17,6 +17,8 @@
  */
 package org.wso2.carbon.identity.oauth.endpoint.util;
 
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.SignedJWT;
 import org.apache.axiom.util.base64.Base64Utils;
 import org.apache.commons.io.Charsets;
 import org.apache.commons.lang.StringUtils;
@@ -35,6 +37,8 @@ import org.wso2.carbon.identity.application.authentication.framework.model.Authe
 import org.wso2.carbon.identity.application.authentication.framework.util.FrameworkConstants;
 import org.wso2.carbon.identity.application.authentication.framework.util.FrameworkUtils;
 import org.wso2.carbon.identity.application.mgt.ApplicationManagementService;
+import org.wso2.carbon.identity.core.ServiceURLBuilder;
+import org.wso2.carbon.identity.core.URLBuilderException;
 import org.wso2.carbon.identity.core.util.IdentityUtil;
 import org.wso2.carbon.identity.discovery.DefaultOIDCProcessor;
 import org.wso2.carbon.identity.discovery.OIDCProcessor;
@@ -69,6 +73,7 @@ import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
 
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
+import java.text.ParseException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -110,6 +115,7 @@ public class EndpointUtil {
     private static OAuthServerConfiguration oauthServerConfiguration;
     private static RequestObjectService requestObjectService;
     private static CibaAuthServiceImpl cibaAuthService;
+    private static final String ALLOW_ADDITIONAL_PARAMS_FROM_ERROR_URL = "OAuth.AllowAdditionalParamsFromErrorUrl";
 
     public static void setOAuth2Service(OAuth2Service oAuth2Service) {
 
@@ -389,6 +395,32 @@ public class EndpointUtil {
      */
     public static String getErrorPageURL(HttpServletRequest request, String errorCode, String subErrorCode, String
             errorMessage, String appName) {
+
+        return getErrorPageURL(request, errorCode, subErrorCode, errorMessage, appName, new OAuth2Parameters());
+    }
+
+    /**
+     * Returns the error page URL.
+     * If RedirectToRequestedRedirectUri property is true and if the resource owner denies the access request or if the
+     * request fails for reasons other than a missing or invalid redirection URI, the authorization server informs
+     * the client by adding the error code, error message and state parameters to the query component of the
+     * redirection URI.
+     * <p>
+     * If RedirectToRequestedRedirectUri property is false OR if the request fails due to a missing, invalid, or
+     * mismatching redirection URI, or if the client identifier is missing or invalid, the authorization server SHOULD
+     * inform the resource owner of the error and MUST NOT automatically redirect the user-agent to the invalid
+     * redirection URI.
+     *
+     * @param request           HttpServletRequest
+     * @param errorCode         Error Code
+     * @param subErrorCode      Sub error code to identify the exact reason for invalid request
+     * @param errorMessage      Message of the error
+     * @param appName           Application Name
+     * @param oAuth2Parameters  OAuth2Parameters
+     * @return url of the redirect error page
+     */
+    public static String getErrorPageURL(HttpServletRequest request, String errorCode, String subErrorCode, String
+            errorMessage, String appName, OAuth2Parameters oAuth2Parameters) {
         // By default RedirectToRequestedRedirectUri property is set to true. Therefore by default error page
         // is returned to the uri given in the request.
         // For the backward compatibility, this property can be set to false and then the error page is
@@ -400,7 +432,7 @@ public class EndpointUtil {
             return getErrorPageURL(request, errorCode, errorMessage, appName);
         } else {
             String redirectUri = request.getParameter(OAuthConstants.OAuth20Params.REDIRECT_URI);
-            String state = request.getParameter(OAuthConstants.OAuth20Params.STATE);
+            String state = retrieveStateForErrorURL(request, oAuth2Parameters);
 
             Map<String, String> params = new HashMap<>();
             params.put(PROP_ERROR, errorCode);
@@ -438,7 +470,13 @@ public class EndpointUtil {
         if (request == null) {
             return redirectURL;
         }
-        return getRedirectURL(redirectURL, request);
+        if (isAllowAdditionalParamsFromErrorUrlEnabled() || isRedirectToCommonErrorPage(params, redirectURL)) {
+            // Appending additional parameters if the <AllowAdditionalParamsFromErrorUrl> config is enabled or
+            // the error is redirected to the common error page.
+            return getRedirectURL(redirectURL, request);
+        } else {
+            return redirectURL;
+        }
     }
 
     public static String getErrorRedirectURL(OAuthProblemException ex, OAuth2Parameters params) {
@@ -523,18 +561,19 @@ public class EndpointUtil {
             FrameworkUtils.addAuthenticationRequestToCache(sessionDataKey, authRequest);
             // Build new query param with only type and session data key
             return buildQueryString(sessionDataKey, scopes);
-        } catch (UnsupportedEncodingException e) {
-            throw new IdentityOAuth2Exception("Error encoding the session key : ", e);
+        } catch (UnsupportedEncodingException | URLBuilderException e) {
+            throw new IdentityOAuth2Exception("Error building query string for login.", e);
         } finally {
             OAuth2Util.clearClientTenantId();
         }
     }
 
     private static String buildQueryString(String sessionDataKey, Set<String> scopes)
-            throws UnsupportedEncodingException {
+            throws UnsupportedEncodingException, URLBuilderException {
 
         String type = getProtocolType(scopes);
-        String commonAuthURL = IdentityUtil.getServerURL(FrameworkConstants.COMMONAUTH, false, true);
+        String commonAuthURL = ServiceURLBuilder.create().addPath(FrameworkConstants.COMMONAUTH).build()
+                .getAbsolutePublicURL();
 
         StringBuilder queryStringBuilder = new StringBuilder();
         queryStringBuilder.append(commonAuthURL).
@@ -554,15 +593,16 @@ public class EndpointUtil {
                                                                                         boolean forceAuthenticate,
                                                                                         boolean checkAuthentication,
                                                                                         Map<String, String[]> reqParams)
-            throws IdentityOAuth2Exception {
+            throws IdentityOAuth2Exception, URLBuilderException {
 
-        String selfPath = OAUTH2_AUTHORIZE;
         AuthenticationRequest authenticationRequest = new AuthenticationRequest();
 
         int tenantId = OAuth2Util.getClientTenatId();
 
         //Build the authentication request context.
-        authenticationRequest.setCommonAuthCallerPath(selfPath);
+        String commonAuthCallerPath =
+                ServiceURLBuilder.create().addPath(OAUTH2_AUTHORIZE).build().getRelativeInternalURL();
+        authenticationRequest.setCommonAuthCallerPath(commonAuthCallerPath);
         authenticationRequest.setForceAuth(forceAuthenticate);
         authenticationRequest.setPassiveAuth(checkAuthentication);
         authenticationRequest.setRelyingParty(clientId);
@@ -905,5 +945,67 @@ public class EndpointUtil {
     public static void setCibaAuthService(CibaAuthServiceImpl cibaAuthService) {
 
         EndpointUtil.cibaAuthService = cibaAuthService;
+    }
+
+    /**
+     * This method retrieve the state to append to the error page URL.
+     * If the state is available in OAuth2Parameters it will retrieve state from OAuth2Parameters.
+     * If the state is not available in OAuth2Parameters, then the state will be retrieved from request object.
+     * If the state is not available in OAuth2Parameters and request object then state will be retrieved
+     * from query params.
+     *
+     * @param request
+     * @param oAuth2Parameters
+     * @return state
+     */
+    private static String retrieveStateForErrorURL(HttpServletRequest request, OAuth2Parameters oAuth2Parameters) {
+
+        String state = null;
+        try {
+            if (oAuth2Parameters.getState() != null) {
+                state = oAuth2Parameters.getState();
+                if (log.isDebugEnabled()) {
+                    log.debug("Retrieved state value " + state + " from OAuth2Parameters.");
+                }
+            } else {
+                JWTClaimsSet jwtClaimsSet = SignedJWT.parse(request.getParameter(OAuthConstants.OAuth20Params.REQUEST))
+                        .getJWTClaimsSet();
+                if (jwtClaimsSet.getStringClaim(OAuthConstants.OAuth20Params.STATE) != null) {
+                    state = jwtClaimsSet.getStringClaim(OAuthConstants.OAuth20Params.STATE);
+                    if (log.isDebugEnabled()) {
+                        log.debug("Retrieved state value " + state + " from request object.");
+                    }
+                }
+            }
+        } catch (ParseException e) {
+            log.error("Error occurred while parsing the signed message", e);
+        }
+
+        return state;
+    }
+
+    /**
+     * Method to retrieve the <AllowAdditionalParamsFromErrorUrl> config from the OAuth Configuration.
+     * @return Retrieved config (true or false)
+     */
+    private static boolean isAllowAdditionalParamsFromErrorUrlEnabled() {
+
+        return Boolean.parseBoolean(IdentityUtil.getProperty(ALLOW_ADDITIONAL_PARAMS_FROM_ERROR_URL));
+    }
+
+    /**
+     * Method to check whether the error is redirected to the common error page.
+     *
+     * @param params       OAuth2Parameters
+     * @param redirectURL  Constructed redirect URL
+     * @return Whether the error is redirected to the common error page (true or false)
+     */
+    private static boolean isRedirectToCommonErrorPage(OAuth2Parameters params, String redirectURL) {
+
+        // Verifying whether the error is redirecting to the redirect url by checking whether the constructed redirect
+        // url contains the redirect url from the request if the params from request is not null and params from
+        // request contains redirect url.
+        return !(params != null && StringUtils.isNotBlank(params.getRedirectURI()) &&
+                StringUtils.startsWith(redirectURL, params.getRedirectURI()));
     }
 }

@@ -30,6 +30,7 @@ import org.wso2.carbon.identity.application.common.model.ServiceProvider;
 import org.wso2.carbon.identity.application.common.model.User;
 import org.wso2.carbon.identity.application.common.util.IdentityApplicationConstants;
 import org.wso2.carbon.identity.application.mgt.ApplicationManagementService;
+import org.wso2.carbon.identity.application.mgt.ApplicationMgtUtil;
 import org.wso2.carbon.identity.oauth.IdentityOAuthAdminException;
 import org.wso2.carbon.identity.oauth.OAuthAdminService;
 import org.wso2.carbon.identity.oauth.common.OAuthConstants;
@@ -46,9 +47,9 @@ import org.wso2.carbon.identity.oauth.dcr.util.DCRConstants;
 import org.wso2.carbon.identity.oauth.dcr.util.DCRMUtils;
 import org.wso2.carbon.identity.oauth.dcr.util.ErrorCodes;
 import org.wso2.carbon.identity.oauth.dto.OAuthConsumerAppDTO;
-import org.wso2.carbon.user.core.UserCoreConstants;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -74,7 +75,8 @@ public class DCRMService {
      */
     public Application getApplication(String clientId) throws DCRMException {
 
-        return buildResponse(getApplicationById(clientId));
+        boolean isApplicationRolePermissionRequired = DCRMUtils.isApplicationRolePermissionRequired();
+        return buildResponse(getApplicationById(clientId, isApplicationRolePermissionRequired));
     }
 
     /**
@@ -223,6 +225,12 @@ public class DCRMService {
 
     private OAuthConsumerAppDTO getApplicationById(String clientId) throws DCRMException {
 
+        return getApplicationById(clientId, true);
+    }
+
+    private OAuthConsumerAppDTO getApplicationById(String clientId, boolean isApplicationRolePermissionRequired)
+            throws DCRMException {
+
         if (StringUtils.isEmpty(clientId)) {
             String errorMessage = "Invalid client_id";
             throw DCRMUtils.generateClientException(
@@ -234,7 +242,7 @@ public class DCRMService {
             if (dto == null || StringUtils.isEmpty(dto.getApplicationName())) {
                 throw DCRMUtils.generateClientException(
                         DCRMConstants.ErrorMessages.NOT_FOUND_APPLICATION_WITH_ID, clientId);
-            } else if (!isUserAuthorized(clientId)) {
+            } else if (isApplicationRolePermissionRequired && !isUserAuthorized(clientId)) {
                 throw DCRMUtils.generateClientException(
                         DCRMConstants.ErrorMessages.FORBIDDEN_UNAUTHORIZED_USER, clientId);
             }
@@ -310,6 +318,12 @@ public class DCRMService {
         List<String> redirectUrisList = new ArrayList<>();
         redirectUrisList.add(createdApp.getCallbackUrl());
         application.setRedirectUris(redirectUrisList);
+
+        List<String> grantTypesList = new ArrayList<>();
+        if (StringUtils.isNotEmpty(createdApp.getGrantTypes())) {
+            grantTypesList = Arrays.asList(createdApp.getGrantTypes().split(" "));
+        }
+        application.setGrantTypes(grantTypesList);
 
         return application;
     }
@@ -629,22 +643,16 @@ public class DCRMService {
 
     private boolean isUserAuthorized(String clientId) throws DCRMServerException {
 
-        OAuthConsumerAppDTO oAuthConsumerAppDTO;
         try {
-            // Get applications owned by the user
-            oAuthConsumerAppDTO = oAuthAdminService.getOAuthApplicationData(clientId);
-            String appUserName = oAuthConsumerAppDTO.getUsername();
-            String threadLocalUserName = CarbonContext.getThreadLocalCarbonContext().getUsername()
-                    .concat(UserCoreConstants.TENANT_DOMAIN_COMBINER)
-                    .concat(CarbonContext.getThreadLocalCarbonContext().getTenantDomain());
-            if (threadLocalUserName.equals(appUserName)) {
-                return true;
-            }
-        } catch (IdentityOAuthAdminException e) {
+            String tenantDomain = PrivilegedCarbonContext.getThreadLocalCarbonContext().getTenantDomain();
+            String spName = DCRDataHolder.getInstance().getApplicationManagementService()
+                    .getServiceProviderNameByClientId(clientId, DCRMConstants.OAUTH2, tenantDomain);
+            String threadLocalUserName = CarbonContext.getThreadLocalCarbonContext().getUsername();
+            return ApplicationMgtUtil.isUserAuthorized(spName, threadLocalUserName);
+        } catch (IdentityApplicationManagementException e) {
             throw DCRMUtils.generateServerException(
                     DCRMConstants.ErrorMessages.FAILED_TO_GET_APPLICATION_BY_ID, clientId, e);
         }
-        return false;
     }
 
     /**

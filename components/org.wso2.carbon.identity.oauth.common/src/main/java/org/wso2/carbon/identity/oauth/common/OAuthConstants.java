@@ -215,6 +215,7 @@ public final class OAuthConstants {
         public static final String CLIENT_ID = "client_id";
         public static final String REDIRECT_URI = "redirect_uri";
         public static final String STATE = "state";
+        public static final String REQUEST = "request";
 
         private OAuth20Params() {
 
@@ -272,6 +273,8 @@ public final class OAuthConstants {
         public static final String OIDC_CONSENT_EP_URL = "/authenticationendpoint/oauth2_consent.do";
         public static final String OAUTH2_CONSENT_EP_URL = "/authenticationendpoint/oauth2_authz.do";
         public static final String OAUTH2_ERROR_EP_URL = "/authenticationendpoint/oauth2_error.do";
+        public static final String OIDC_DEFAULT_LOGOUT_RESPONSE_URL = "/authenticationendpoint/oauth2_logout.do";
+        public static final String OIDC_LOGOUT_CONSENT_EP_URL = "/authenticationendpoint/oauth2_logout_consent.do";
 
         private OAuth20Endpoints() {
 

@@ -67,6 +67,7 @@ import java.util.Map;
 
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.TokenBindings.NONE;
 import static org.wso2.carbon.identity.oauth2.util.OAuth2Util.isValidTokenBinding;
+import static org.wso2.carbon.identity.oauth2.util.OAuth2Util.validateRequestTenantDomain;
 
 /**
  * OAuth2 Service which is used to issue authorization codes or access tokens upon authorizing by the
@@ -133,6 +134,9 @@ public class OAuth2Service extends AbstractAdmin {
         }
 
         try {
+            String appTenantDomain = OAuth2Util.getTenantDomainOfOauthApp(clientId);
+            validateRequestTenantDomain(appTenantDomain);
+
             if (StringUtils.isBlank(clientId)) {
                 throw new InvalidOAuthClientException("Invalid client_id. No OAuth application has been registered " +
                         "with the given client_id");
@@ -184,21 +188,7 @@ public class OAuth2Service extends AbstractAdmin {
                         .getApplicationName() + ", Callback URL : " + appDO.getCallbackUrl());
             }
 
-            // Valid Client with a callback url in the request.
-            // If application callback url is defined as a regexp check weather it matches the given url
-            // Or else check weather they are equal
-            String regexp = null;
-            String registeredCallbackUrl = appDO.getCallbackUrl();
-            if (registeredCallbackUrl.startsWith(OAuthConstants.CALLBACK_URL_REGEXP_PREFIX)) {
-                regexp = registeredCallbackUrl.substring(OAuthConstants.CALLBACK_URL_REGEXP_PREFIX.length());
-            }
-
-            if (regexp != null && callbackURI.matches(regexp)) {
-                validationResponseDTO.setValidClient(true);
-                validationResponseDTO.setApplicationName(appDO.getApplicationName());
-                validationResponseDTO.setCallbackURL(callbackURI);
-                return validationResponseDTO;
-            } else if (appDO.getCallbackUrl().equals(callbackURI)) {
+            if (validateCallbackURI(callbackURI, appDO)) {
                 validationResponseDTO.setValidClient(true);
                 validationResponseDTO.setApplicationName(appDO.getApplicationName());
                 validationResponseDTO.setCallbackURL(callbackURI);
@@ -228,6 +218,23 @@ public class OAuth2Service extends AbstractAdmin {
             validationResponseDTO.setErrorMsg("Error when processing the authorization request.");
             return validationResponseDTO;
         }
+    }
+
+    /**
+     * Validate Client with a callback url in the request.
+     *
+     * @param callbackURI callback url in the request.
+     * @param oauthApp OAuth application data object
+     * @return boolean If application callback url is defined as a regexp check weather it matches the given url
+     * Or check weather callback urls are equal
+     */
+    private boolean validateCallbackURI(String callbackURI, OAuthAppDO oauthApp) {
+        String regexp = null;
+        String registeredCallbackUrl = oauthApp.getCallbackUrl();
+        if (registeredCallbackUrl.startsWith(OAuthConstants.CALLBACK_URL_REGEXP_PREFIX)) {
+            regexp = registeredCallbackUrl.substring(OAuthConstants.CALLBACK_URL_REGEXP_PREFIX.length());
+        }
+        return (regexp != null && callbackURI.matches(regexp)) || registeredCallbackUrl.equals(callbackURI);
     }
 
     /**
