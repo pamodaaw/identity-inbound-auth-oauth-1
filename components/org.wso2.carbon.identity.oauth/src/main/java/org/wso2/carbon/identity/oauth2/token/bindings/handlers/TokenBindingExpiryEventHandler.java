@@ -75,7 +75,8 @@ public class TokenBindingExpiryEventHandler extends AbstractEventHandler {
         AuthenticationContext context = (AuthenticationContext) eventProperties.get(IdentityEventConstants
                 .EventProperty.CONTEXT);
         try {
-            if (FrameworkConstants.RequestType.CLAIM_TYPE_OIDC.equals(request.getParameter(TYPE))) {
+            if (request != null &&
+                    FrameworkConstants.RequestType.CLAIM_TYPE_OIDC.equals(request.getParameter(TYPE))) {
 
                 String consumerKey = context.getRelyingParty();
                 String bindingType = OAuth2Util.getAppInformationByClientId(consumerKey).getTokenBindingType();
